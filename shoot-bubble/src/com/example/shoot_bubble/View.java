@@ -1,179 +1,202 @@
 package com.example.shoot_bubble;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Vector;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.util.AttributeSet;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
-public class View extends SurfaceView implements Runnable {
+public class View extends SurfaceView implements SurfaceHolder.Callback {
+	class GameThread extends Thread {
+
+		boolean isItOkay = false;
+		boolean mImagesReady = false;
+
+		// Original Images
+		private Bitmap mBackgroundOrig;
+		private Bitmap[] mBubblesOrig;
+
+		// Resized Images
+		private Bmp mBackground;
+		private Bmp[] mBubbles;
+
+		private SurfaceHolder mSurfaceHolder;
+
+		public static final int GAMEFIELD_WIDTH = 320;
+		public static final int GAMEFIELD_HEIGHT = 480;
+		public static final int EXTENDED_GAMEFIELD_WIDTH = 640;
+
+		private double mDisplayScale;
+		private int mDisplayDX;
+		private int mDisplayDY;
+		private int mCanvasHeight = 1;
+		private int mCanvasWidth = 1;
+
+		// Managers
+		private LevelManager mLevelManager;
+
+		// vector contains all resized images
+		Vector mImageList;
+
+		public GameThread(SurfaceHolder surfaceHolder, byte[] customLevels,
+				int startingLevel) {
+			mSurfaceHolder = surfaceHolder;
+			Resources res = mContext.getResources();
+			mBackgroundOrig = BitmapFactory.decodeResource(res,
+					R.drawable.background);
+			mImageList = new Vector();
+			mBackground = NewBmpWrap();
+			isItOkay = true;
+
+			if (null == customLevels) {
+				try {
+					InputStream is = mContext.getAssets().open("levels.txt");
+					int size = is.available();
+					byte[] levels = new byte[size];
+					is.read(levels);
+					is.close();
+//					SharedPreferences sp = mContext.getSharedPreferences(
+//							FrozenBubble.PREFS_NAME, Context.MODE_PRIVATE);
+//					startingLevel = sp.getInt("level", 0);
+					mLevelManager = new LevelManager(levels, startingLevel);
+				} catch (IOException e) {
+					// Should never happen.
+					throw new RuntimeException(e);
+				}
+			} else {
+				// We were launched by the level editor.
+				mLevelManager = new LevelManager(customLevels, startingLevel);
+			}
+		}
+
+		private Bmp NewBmpWrap() {
+			int new_img_id = mImageList.size();
+			System.out.println(new_img_id);
+			Bmp new_img = new Bmp(new_img_id);
+			mImageList.addElement(new_img);
+			return new_img;
+		}
+
+		public void setSurfaceSize(int width, int height) {
+			mCanvasWidth = width;
+			mCanvasHeight = height;
+			System.out.println(width + " " + height + " " + GAMEFIELD_WIDTH
+					+ " " + GAMEFIELD_HEIGHT);
+			if (width / height >= GAMEFIELD_WIDTH / GAMEFIELD_HEIGHT) {
+				mDisplayScale = 1.0 * height / GAMEFIELD_HEIGHT;
+				mDisplayDX = (int) ((width - mDisplayScale
+						* EXTENDED_GAMEFIELD_WIDTH) / 2);
+				mDisplayDY = 0;
+			} else {
+				mDisplayScale = 1.0 * width / GAMEFIELD_WIDTH;
+				mDisplayDX = (int) (-mDisplayScale
+						* (EXTENDED_GAMEFIELD_WIDTH - GAMEFIELD_WIDTH) / 2);
+				mDisplayDY = (int) ((height - mDisplayScale * GAMEFIELD_HEIGHT) / 2);
+			}
+			resizeBitmaps();
+		}
+
+		private void scaleFrom(Bmp image, Bitmap bmp) {
+			if (image.bmp != null && image.bmp != bmp) {
+				image.bmp.recycle();
+			}
+
+			if (mDisplayScale > 0.99999 && mDisplayScale < 1.00001) {
+				image.bmp = bmp;
+				return;
+			}
+			int dstWidth = (int) (bmp.getWidth() * mDisplayScale);
+			int dstHeight = (int) (bmp.getHeight() * mDisplayScale);
+			image.bmp = Bitmap.createScaledBitmap(bmp, dstWidth, dstHeight,
+					true);
+		}
+
+		private void resizeBitmaps() {
+			scaleFrom(mBackground, mBackgroundOrig);
+			mImagesReady = true;
+		}
+
+		private void doDraw(Canvas canvas) {
+			if (!mImagesReady) {
+				return;
+			}
+			if (mDisplayDX > 0 || mDisplayDY > 0) {
+				canvas.drawRGB(0, 0, 0);
+			}
+			drawBackground(canvas);
+		}
+
+		private void drawBackground(Canvas c) {
+			c.drawBitmap(mBackground.bmp,
+					(float) (0 * mDisplayScale + mDisplayDX),
+					(float) (0 * mDisplayScale + mDisplayDY), null);
+		}
+
+		@Override
+		public void run() {
+			while (isItOkay) {
+				if (!mSurfaceHolder.getSurface().isValid())
+					continue;
+				Canvas c = mSurfaceHolder.lockCanvas();
+				doDraw(c);
+				mSurfaceHolder.unlockCanvasAndPost(c);
+			}
+		}
+	}
+
+	private Context mContext;
+	private GameThread thread;
 	
-	boolean isItOkay = false;
-	Thread thread = null;
-	SurfaceHolder sHolder;
-
-	boolean mImagesReady = false;
-
-	Bitmap ball;
-	float X, Y;
-	// Original Images
-	private Bitmap mBackgroundOrig;
-	private Bitmap[] mBubblesOrig;
-
-	// Resized Images
-	private Bmp mBackground;
-	private Bmp[] mBubbles;
-
-	public static final int GAMEFIELD_WIDTH = 320;
-	public static final int GAMEFIELD_HEIGHT = 480;
-	public static final int EXTENDED_GAMEFIELD_WIDTH = 640;
-
-	private double mDisplayScale;
-	private int mDisplayDX;
-	private int mDisplayDY;
-	private int mCanvasHeight = 1;
-	private int mCanvasWidth = 1;
-
-	// vector contains all resized images
-	Vector mImageList;
-
-	public View(Context context, Bitmap b, float x, float y) {
+	public View(Context context) {
 		super(context);
-		sHolder = getHolder();
-		Resources res = context.getResources();
-		mImageList = new Vector();
-		mBackground = NewBmpWrap();
-		mBackgroundOrig = BitmapFactory.decodeResource(res,
-				R.drawable.background);
-		System.out.println("aaaaaaaa");
-//		setSurfaceSize(getWidth(), getHeight());
-		this.ball = b;
-		this.X = x;
-		this.Y = y;
+		mContext = context;
+		SurfaceHolder holder = getHolder();
+		holder.addCallback(this);
+		thread = new GameThread(holder, null, 0);
+		setFocusable(true);
+		setFocusableInTouchMode(true);
+		thread.start();
 	}
 
-	private Bmp NewBmpWrap() {
-		int new_img_id = mImageList.size();
-		System.out.println(new_img_id);
-		Bmp new_img = new Bmp(new_img_id);
-		mImageList.addElement(new_img);
-		return new_img;
+	public View(Context context, byte[] levels, int startingLevel) {
+		super(context);
+		mContext = context;
+		SurfaceHolder holder = getHolder();
+		holder.addCallback(this);
+		thread = new GameThread(holder, levels, startingLevel);
+		setFocusable(true);
+		setFocusableInTouchMode(true);
+		thread.start();
 	}
+	
+	
 
-	public void setSurfaceSize(int width, int height) {
-		mCanvasWidth = width;
-		mCanvasHeight = height;
-		System.out.println("1111111");
-		System.out.println(width+" "+height+" "+GAMEFIELD_WIDTH+" "+GAMEFIELD_HEIGHT);
-		if (width / height >= GAMEFIELD_WIDTH / GAMEFIELD_HEIGHT) {
-			mDisplayScale = 1.0 * height / GAMEFIELD_HEIGHT;
-			mDisplayDX = (int) ((width - mDisplayScale
-					* EXTENDED_GAMEFIELD_WIDTH) / 2);
-			mDisplayDY = 0;
-		} else {
-			mDisplayScale = 1.0 * width / GAMEFIELD_WIDTH;
-			mDisplayDX = (int) (-mDisplayScale
-					* (EXTENDED_GAMEFIELD_WIDTH - GAMEFIELD_WIDTH) / 2);
-			mDisplayDY = (int) ((height - mDisplayScale * GAMEFIELD_HEIGHT) / 2);
-		}
-		resizeBitmaps();
-	}
-
-	private void scaleFrom(Bmp image, Bitmap bmp) {
-		if (image.bmp != null && image.bmp != bmp) {
-			image.bmp.recycle();
-		}
-
-		if (mDisplayScale > 0.99999 && mDisplayScale < 1.00001) {
-			image.bmp = bmp;
-			return;
-		}
-		int dstWidth = (int) (bmp.getWidth() * mDisplayScale);
-		int dstHeight = (int) (bmp.getHeight() * mDisplayScale);
-		image.bmp = Bitmap.createScaledBitmap(bmp, dstWidth, dstHeight, true);
-	}
-
-	private void resizeBitmaps() {
-		scaleFrom(mBackground, mBackgroundOrig);
-		// for (int i = 0; i < mBubblesOrig.length; i++) {
-		// scaleFrom(mBubbles[i], mBubblesOrig[i]);
-		// }
-		// for (int i = 0; i < mBubblesBlind.length; i++) {
-		// scaleFrom(mBubblesBlind[i], mBubblesBlindOrig[i]);
-		// }
-		// for (int i = 0; i < mFrozenBubbles.length; i++) {
-		// scaleFrom(mFrozenBubbles[i], mFrozenBubblesOrig[i]);
-		// }
-		// for (int i = 0; i < mTargetedBubbles.length; i++) {
-		// scaleFrom(mTargetedBubbles[i], mTargetedBubblesOrig[i]);
-		// }
-		// scaleFrom(mBubbleBlink, mBubbleBlinkOrig);
-		// scaleFrom(mGameWon, mGameWonOrig);
-		// scaleFrom(mGameLost, mGameLostOrig);
-		// scaleFrom(mHurry, mHurryOrig);
-		// scaleFrom(mPenguins, mPenguinsOrig);
-		// scaleFrom(mCompressorHead, mCompressorHeadOrig);
-		// scaleFrom(mCompressor, mCompressorOrig);
-		// scaleFrom(mLife, mLifeOrig);
-		// scaleFrom(mFontImage, mFontImageOrig);
-		mImagesReady = true;
-	}
-
-	private void doDraw(Canvas canvas) {
-		if (!mImagesReady) {
-			System.out.println(":O");
-			return;
-		}
-		if (mDisplayDX > 0 || mDisplayDY > 0) {
-			canvas.drawRGB(0, 0, 0);
-			System.out.println(":(");
-		}
-		System.out.println(":)");
-		drawBackground(canvas);
-	}
-
-	private void drawBackground(Canvas c) {
-		c.drawBitmap(mBackground.bmp, (float) (0 * mDisplayScale + mDisplayDX),
-				(float) (0 * mDisplayScale + mDisplayDY), null);
+	public GameThread getThread() {
+		return thread;
 	}
 
 	@Override
-	public void run() {
-		while (isItOkay) {
-			if (!sHolder.getSurface().isValid())
-				continue;
-			Canvas c = sHolder.lockCanvas();
-
-			// here we draw images
-			setSurfaceSize(getWidth(), getHeight());
-			doDraw(c);
-//			c.drawARGB(255, 150, 150, 10);
-			c.drawBitmap(ball, X, Y, null);
-			sHolder.unlockCanvasAndPost(c);
-		}
+	public void surfaceChanged(SurfaceHolder holder, int format, int width,
+			int height) {
+		thread.setSurfaceSize(width, height);
 	}
 
-	public void pause() {
-		isItOkay = false;
-		while (true) {
-			try {
-				thread.join();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			break;
-		}
-		thread = null;
+	@Override
+	public void surfaceCreated(SurfaceHolder holder) {
+		thread.isItOkay = true;
 	}
 
-	public void resume() {
-		isItOkay = true;
-		thread = new Thread(this);
-		thread.start();
+	@Override
+	public void surfaceDestroyed(SurfaceHolder holder) {
+		thread.isItOkay = false;
 	}
 
 }

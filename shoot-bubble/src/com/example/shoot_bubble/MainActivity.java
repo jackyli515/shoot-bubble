@@ -2,39 +2,31 @@ package com.example.shoot_bubble;
 
 import android.os.Bundle;
 import android.app.Activity;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View.OnTouchListener;
 
 public class MainActivity extends Activity implements OnTouchListener {
 
-	View v;
-	Bitmap ball;
-	float x, y;
+	View gameView;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		ball = BitmapFactory
-				.decodeResource(getResources(), R.drawable.bubble_1);
-		x = y = 50;
-		v = new View(this, ball, x, y);
-		v.setOnTouchListener(this);
-		setContentView(v);
+//		gameView.setOnTouchListener(this);
+		
+		gameView = new View(this);
+		setContentView(gameView);
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
-		v.pause();
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
-		v.resume();
 	}
 
 	@Override

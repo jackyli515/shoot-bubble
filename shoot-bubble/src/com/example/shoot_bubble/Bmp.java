@@ -12,4 +12,3 @@ class Bmp {
 	public int id;
 }
 
-//fuck u
