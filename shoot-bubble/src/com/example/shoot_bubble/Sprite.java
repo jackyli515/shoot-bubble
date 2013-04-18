@@ -6,6 +6,7 @@ import android.graphics.Rect;
 import android.graphics.Region;
 
 public abstract class Sprite {
+//	ssososo
 
 	public static int TYPE_BUBBLE = 1;
 	public static int TYPE_IMAGE = 2;
