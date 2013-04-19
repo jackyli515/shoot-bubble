@@ -14,6 +14,7 @@ public class ImageSprite extends Sprite {
 		super(spriteArea);
 		image = img;
 	}
+//	sss
 
 //	public void saveState(Bundle map, Vector savedSprites) {
 //	    if (getSavedId() != -1) {
